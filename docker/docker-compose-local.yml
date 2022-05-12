@@ -21,6 +21,9 @@ services:
         environment:
             - LOAD_EX=n
             - EXECUTOR=Local
+            - AIRFLOW_CONN_AWS_DEFAULT=aws://a:a@?host=http://localstack:4566&region_name=us-east-1
+            - AIRFLOW_CONN_MYSQL_DEFAULT=mysql://root:password@mariadb-columnstore:3306
+            - AIRFLOW_VAR_S3_INPUT_BUCKET=reports
         logging:
             options:
                 max-size: 10m
@@ -36,3 +39,39 @@ services:
             interval: 30s
             timeout: 30s
             retries: 3
+
+    localstack:
+        image: localstack/localstack:latest
+        container_name: "localstack"
+        ports:
+            - "4566:4566"
+        environment:
+            - SERVICES=dynamodb,sqs,s3,iam
+            - DOCKER_HOST=unix:///var/run/docker.sock
+        volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock"
+            - "/tmp/localstack:/tmp/localstack"
+
+    aws-cli:
+        image: mesosphere/aws-cli
+        container_name: "aws-cli"
+        volumes:
+            - ./resources:/tmp/resources
+        environment:
+            - AWS_ACCESS_KEY_ID=dummyaccess
+            - AWS_SECRET_ACCESS_KEY=dummysecret
+            - AWS_DEFAULT_REGION=us-east-1
+        entrypoint: /bin/sh -c
+        command: >
+            "
+              aws --endpoint http://localstack:4566 s3 mb s3://reports
+              aws --endpoint http://localstack:4566 s3 cp /tmp/resources/2019-20_pbp.csv s3://reports/test.csv
+            "
+        depends_on:
+            - localstack
+            - mariadb-columnstore
+
+    mariadb-columnstore:
+        image: mariadb/columnstore
+        ports:
+          - '3306:3306'
